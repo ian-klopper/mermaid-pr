@@ -19,6 +19,73 @@ Files in the PR's slice of the system, colored by diff status, with import/calle
 
 Capped at ~30 nodes for readability.
 
+## Example output
+
+Here's what the skill posts on a fictional PR that adds Google OAuth sign-in alongside an existing password flow, and removes the legacy password-only path. This is the actual comment shape — plain-English summary, fenced ```mermaid block, legend.
+
+> ## What this PR changes
+>
+> This PR adds Google OAuth sign-in alongside the existing password flow. Users can now sign in with their Google account, receive a short-lived access token plus a refresh token, and stay logged in across sessions. The deprecated password-only sign-in path and its plain-text password helper have been removed; the auth middleware was updated to recognize the new tokens.
+
+```mermaid
+graph LR
+  classDef added fill:#d1fae5,stroke:#10b981,stroke-width:2px,color:#064e3b;
+  classDef modified fill:#fffbe6,stroke:#f59e0b,stroke-width:2px,color:#78350f;
+  classDef removed fill:#fee2e2,stroke:#ef4444,stroke-width:2px,stroke-dasharray:5 3,color:#7f1d1d;
+
+  subgraph frontend["Frontend"]
+    login_page["Sign-in page"]
+    google_button["Google sign-in button"]
+    account_page["Account page"]
+  end
+
+  subgraph auth["Authentication"]
+    sign_in["Sign in"]
+    oauth_callback["OAuth callback"]
+    token_issuer["Auth token"]
+    legacy_login["Password sign-in (deprecated)"]
+    plaintext_helper["Plain-text password helper"]
+  end
+
+  subgraph api["API"]
+    api_entry["API entry point"]
+    auth_middleware["Auth check"]
+  end
+
+  subgraph data["Data"]
+    user_db["User database"]
+    refresh_store["Refresh tokens"]
+  end
+
+  login_page --> sign_in
+  login_page -.-> google_button
+  google_button -.-> oauth_callback
+  oauth_callback -.-> token_issuer
+  sign_in -.-> token_issuer
+  sign_in -. removed .-> legacy_login
+  legacy_login -. removed .-> plaintext_helper
+  token_issuer -.-> refresh_store
+  account_page --> api_entry
+  api_entry --> auth_middleware
+  auth_middleware -.-> token_issuer
+  auth_middleware --> user_db
+  sign_in --> user_db
+
+  class google_button added
+  class oauth_callback added
+  class token_issuer added
+  class refresh_store added
+  class login_page modified
+  class sign_in modified
+  class api_entry modified
+  class auth_middleware modified
+  class user_db modified
+  class legacy_login removed
+  class plaintext_helper removed
+```
+
+Notice every node uses a human-readable label — no filenames, no paths, no extensions. Subgraphs group by purpose ("Authentication") rather than by directory ("src/auth"). A non-engineer can read this and understand the PR.
+
 ## Install
 
 ```bash
