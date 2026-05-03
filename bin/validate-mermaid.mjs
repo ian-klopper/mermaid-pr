@@ -76,4 +76,19 @@ for (const [open, close] of pairs) {
   }
 }
 
+// Empty quoted strings in `click` directives break mermaid's parser on GitHub
+// (e.g. `click foo "" "bar"` -> "Expecting STR, got SPACE"), even though the
+// surrounding structure is balanced.
+for (let i = 0; i < lines.length; i++) {
+  const line = lines[i].trim();
+  if (!line.startsWith('click ')) continue;
+  if (/""/.test(line)) {
+    console.error(
+      `line ${i + 1}: click directive has an empty quoted string; ` +
+        `use \`click NODE "<path>" "<path>"\` or omit the line`,
+    );
+    process.exit(1);
+  }
+}
+
 process.exit(0);

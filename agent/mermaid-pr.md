@@ -137,7 +137,9 @@ Edges:
 - Dotted `-.->` for **added**.
 - Dotted with label `-. removed .->` for **removed**.
 
-Tooltips can still carry the file path (so devs hovering see it), but only as a tooltip — not as the visible label:
+Click directives are tooltip-only on GitHub (link navigation is disabled in PR comments for security). Their purpose: a developer hovering a node sees the underlying file path.
+
+**Required form:** `click <nodeId> "<path>" "<path>"` — pass the file path in **both** the URL slot and the tooltip slot. Never emit an empty quoted string (`""`) in either slot; that breaks mermaid's parser on GitHub. If a node has no associated file path, omit its click line entirely.
 
 ```
 click sign_in "src/auth/login.ts" "src/auth/login.ts"
