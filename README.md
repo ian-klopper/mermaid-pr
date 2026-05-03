@@ -1,25 +1,8 @@
 # mermaid-pr
 
-A Claude Code **skill + subagent** pair that attaches a diff-aware Mermaid architecture diagram to every PR Claude creates on your behalf.
+A Claude Code skill that drops a plain-English architecture diagram into every PR your agent opens. Color-coded by what changed, no filenames, no jargon. Reviewers see the structural change at a glance.
 
-- **Skill** (`skill/SKILL.md`) — runs in the parent Claude Code session and dispatches the work.
-- **Subagent** (`agent/mermaid-pr.md`) — runs in a fresh, isolated context, analyzes the PR diff, generates a Mermaid graph, validates it, and posts (or updates) a sticky PR comment.
-
-The diagram is a fenced ```mermaid block, which GitHub renders inline natively. No image generation, no commits to the PR branch.
-
-## What the diagram shows
-
-Files in the PR's slice of the system, colored by diff status, with import/caller edges:
-
-- 🟢 **green** — added in this PR
-- 🟡 **yellow** — modified
-- 🔴 **red dashed** — removed
-- **solid** arrows — pre-existing imports
-- **dotted** arrows — imports added or removed in this PR
-
-Capped at ~30 nodes for readability.
-
-## Example output
+## What it looks like
 
 Here's what the skill posts on a fictional PR that adds Google OAuth sign-in alongside an existing password flow, and removes the legacy password-only path. This is the actual comment shape — plain-English summary, fenced ```mermaid block, legend.
 
@@ -84,49 +67,48 @@ graph LR
   class plaintext_helper removed
 ```
 
-Notice every node uses a human-readable label — no filenames, no paths, no extensions. Subgraphs group by purpose ("Authentication") rather than by directory ("src/auth"). A non-engineer can read this and understand the PR.
+Every node is a human-readable label — no filenames, no paths, no extensions. Subgraphs group by purpose ("Authentication") rather than by directory ("src/auth"). A non-engineer can read this and understand the PR.
 
 ## Install
 
-```bash
-git clone <this-repo> ~/Desktop/mermaid-pr   # or wherever
-cd ~/Desktop/mermaid-pr
-bash install.sh                              # symlinks into ~/.claude/{skills,agents}/
-```
+You don't run anything yourself. Paste this to your agent:
 
-No npm deps — the validator is pure Node stdlib.
+> Install mermaid-pr for me. Repo: https://github.com/ian-klopper/mermaid-pr. Clone it to my Desktop, run `install.sh`, and make sure `gh` is installed and authenticated. Confirm when done.
 
-One-time prereq (the subagent shells out to `gh`):
+That's the whole install. The agent handles the cloning, symlinking into `~/.claude/`, and `gh` setup. Restart Claude Code afterwards so it picks up the new skill.
 
-```bash
-brew install gh
-gh auth login
-```
+## Use it
 
-## Verify
+Once installed, you don't think about it — the diagram attaches automatically the next time your agent opens a PR. To attach one to an existing PR, paste:
 
-```bash
-node bin/validate-mermaid.mjs examples/sample-diff-diagram.mmd   # exit 0
-```
+> Run mermaid-pr on PR #123.
 
-In a fresh Claude Code session, `mermaid-pr` should appear in the available skills and subagents lists.
+## What the colors mean
 
-## How it triggers
+- 🟢 green node — added in this PR
+- 🟡 yellow node — modified
+- 🔴 red dashed node — removed
+- **solid** arrow — pre-existing connection
+- **dotted** arrow — connection added or removed in this PR
 
-Two reinforcing mechanisms:
+Capped at ~30 nodes per diagram so it stays readable.
 
-1. The skill's `description` says "Use immediately after `gh pr create` succeeds." Claude Code's skill discovery picks this up.
-2. A one-line nudge in `~/.claude/CLAUDE.md` reinforces it for sessions where description matching alone isn't enough.
+## When something looks off
 
-## Manual invocation
+- **No diagram on the PR** → ask your agent to confirm `gh` is installed and authenticated.
+- **Diagram didn't render on GitHub** → ask your agent to re-run mermaid-pr on the PR. Usually a one-shot fix.
+- **Two diagrams on one PR** → delete the older comment manually. Subsequent runs will edit the remaining one.
+- **Skill not appearing** → ask your agent to check that `~/.claude/skills/mermaid-pr` exists and points to the cloned repo.
 
-If you want to attach a diagram to an existing PR (one Claude didn't just create), ask Claude:
+<details>
+<summary>For engineers digging into the source</summary>
 
-> Run the mermaid-pr skill on PR #123.
+The skill ships in two pieces:
 
-The skill will pull the metadata via `gh pr view` and dispatch the subagent.
+- `skill/SKILL.md` — runs in the parent Claude Code session and dispatches the work.
+- `agent/mermaid-pr.md` — runs in a fresh, isolated context, analyzes the PR diff, generates the Mermaid graph, validates it, and posts (or updates) a sticky PR comment.
 
-## Files
+Layout:
 
 | Path | Purpose |
 |---|---|
@@ -136,11 +118,17 @@ The skill will pull the metadata via `gh pr view` and dispatch the subagent.
 | `examples/prompt-template.md` | Exact prompt the skill passes to the subagent |
 | `examples/sample-diff-diagram.mmd` | Reference output to anchor the subagent on |
 | `install.sh` | Symlinks skill + subagent into `~/.claude/` |
-| `package.json` | Validator script entry; no runtime deps |
 
-## Troubleshooting
+**Self-update.** The dispatcher checks the GitHub repo for newer commits on every run (rate-limited to once per 24h, skipped if the working tree is dirty), fast-forwards if behind, and asks the subagent to add a one-line acknowledgement footer to the PR comment when an update was just pulled.
 
-- **"gh not installed"** in the subagent's failure message → run `brew install gh && gh auth login`.
-- **Diagram doesn't render on GitHub** → the Mermaid block is too large or has a syntax error. Run `node bin/validate-mermaid.mjs /tmp/mermaid-pr-*.mmd` against the temp file the subagent wrote.
-- **Two diagram comments on the same PR** → the sticky marker (`<!-- mermaid-pr:diagram -->`) wasn't on the first line of the previous comment. Delete the older one manually; subsequent runs will edit the remaining one.
-- **Skill doesn't appear in fresh session** → confirm `ls -la ~/.claude/skills/mermaid-pr` shows a valid symlink.
+**Triggering.** The skill activates two ways:
+1. Its `description` says "Use immediately after `gh pr create` succeeds" — Claude Code's skill discovery picks this up.
+2. A one-line nudge in `~/.claude/CLAUDE.md` reinforces it for sessions where description matching alone isn't enough.
+
+**Verifying the validator** (only useful when hacking on the diagram generator):
+
+```bash
+node bin/validate-mermaid.mjs examples/sample-diff-diagram.mmd   # exit 0
+```
+
+</details>
