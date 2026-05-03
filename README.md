@@ -71,15 +71,15 @@ Every node is a human-readable label — no filenames, no paths, no extensions. 
 
 ## Install
 
-You don't run anything yourself. Paste this to your agent:
+Paste this to your agent and it'll handle the rest:
 
 > Install mermaid-pr for me. Repo: https://github.com/ian-klopper/mermaid-pr. Clone it to my Desktop, run `install.sh`, and make sure `gh` is installed and authenticated. Confirm when done.
 
-That's the whole install. The agent handles the cloning, symlinking into `~/.claude/`, and `gh` setup. Restart Claude Code afterwards so it picks up the new skill.
+The agent clones the repo, symlinks the skill into `~/.claude/`, and walks through `gh` setup. Restart Claude Code afterwards so it picks up the new skill.
 
 ## Use it
 
-Once installed, you don't think about it — the diagram attaches automatically the next time your agent opens a PR. To attach one to an existing PR, paste:
+From here on, the diagram attaches automatically the next time your agent opens a PR. To put one on an existing PR, paste:
 
 > Run mermaid-pr on PR #123.
 
