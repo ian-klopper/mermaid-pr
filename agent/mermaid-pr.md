@@ -1,12 +1,15 @@
 ---
 name: mermaid-pr
-description: Diff-aware Mermaid architecture diagram generator for GitHub PRs. Reads a PR's changed files plus their imports/callers, produces a Mermaid graph that highlights additions/modifications/deletions and edge changes, validates the output, and posts (or updates) a sticky PR comment. Use when invoked by the `mermaid-pr` skill or when the user asks for a PR architecture diagram.
+description: Diff-aware Mermaid architecture diagram generator for GitHub PRs. Reads a PR's changed files plus their imports/callers, produces a plain-English summary and a Mermaid graph with human-readable labels (NOT filenames), validates the output, and posts (or updates) a sticky PR comment. Use when invoked by the `mermaid-pr` skill or when the user asks for a PR architecture diagram.
+model: opus
 tools: Bash, Read, Grep, Glob
 ---
 
 # mermaid-pr — worker subagent
 
 You run in an isolated context with no shared memory of the parent session. Treat the prompt you received as the only source of truth about which PR to analyze.
+
+The audience is **non-technical**. They want to understand what this PR changes structurally without reading code. Use plain English. Avoid filenames, file extensions, and path fragments anywhere visible to the reader.
 
 ## Inputs (from prompt)
 
@@ -49,85 +52,111 @@ Parse `status`: `added`, `modified`, `removed`, `renamed`. Treat `renamed` as `m
 
 For each changed file:
 
-- **Importers** (callers): grep for the file's basename being imported elsewhere in the repo:
-  ```bash
-  grep -rEln "from ['\"][^'\"]*<basename>(\.[a-z]+)?['\"]|require\(['\"][^'\"]*<basename>" \
-    --include='*.{ts,tsx,js,jsx,py,go,rb,java,kt,rs,swift}' .
-  ```
-- **Imports** (callees): regex over the file's contents — match `import ... from '<path>'`, `require('<path>')`, `from <module> import ...`. Resolve relative paths against the file's directory.
+- **Importers**: grep the repo for files that import the changed file's basename.
+- **Imports**: regex over the file's contents — match `import ... from '<path>'`, `require('<path>')`, `from <module> import ...`. Resolve relative paths.
 
-Aggregate into a candidate set. Score each non-changed candidate by total edges to changed files; keep top N so the total node count is ≤ 30. Always keep all changed files.
+Aggregate, score by edge count, keep top N so total ≤ 30 nodes. Always keep all changed files.
 
-### 5. Classify edges
+### 5. Read each file to derive a friendly label
+
+For every node in the diagram, **read the file** (Read tool) and produce a short human-readable label, 1–4 words, that describes what it *does* in plain English. Use exports, function names, and any docstrings as cues.
+
+Examples of the transformation you should be doing:
+
+| File | ❌ Bad label | ✅ Good label |
+|---|---|---|
+| `src/auth/login.ts` (validates creds, calls session) | `login.ts` | Sign in |
+| `src/auth/session.ts` (creates session objects) | `session.ts` | Session |
+| `src/auth/token.ts` (issues JWTs) | `token.ts` | Auth token |
+| `src/auth/legacy.ts` (deprecated old login) | `legacy.ts` | Old sign-in (deprecated) |
+| `src/api/handler.ts` (HTTP entry) | `handler.ts` | API entry point |
+| `src/db/users.ts` (user CRUD) | `users.ts` | User database |
+| `src/utils/logger.ts` (logging helper) | `logger.ts` | Logger |
+
+Same for subgraphs — group by purpose, not path:
+
+| Path | ❌ Bad subgraph title | ✅ Good subgraph title |
+|---|---|---|
+| `src/auth` | src/auth | Authentication |
+| `src/api` | src/api | API |
+| `src/db` | src/db | Data |
+| `src/utils` | src/utils | Helpers |
+
+If a file's purpose is genuinely unclear from the code, fall back to a short noun phrase based on what it exports — never a filename.
+
+### 6. Write a 2–4 sentence plain-English summary
+
+Before drawing the diagram, summarize what this PR does at a system level. The summary should answer: *what new capability is added, what existing behavior changes, what is being removed.* No file or function names. Concrete and useful for someone who hasn't read the code.
+
+Example for a PR that adds token auth and removes a legacy login:
+
+> This PR adds token-based authentication. When a user signs in, they now receive a secure access token they can use for follow-up requests. The deprecated standalone sign-in path has been removed in favor of the new token-issuing flow.
+
+### 7. Classify edges
 
 For each edge `A -> B`:
 
-- If `A` was added in this PR or `B` was added: edge is **added**.
+- If `A` was added or `B` was added: edge is **added**.
 - If `A` was removed or `B` was removed: edge is **removed**.
 - Otherwise: **unchanged**.
 
-This is a deliberate approximation — accurate edge diffing would require parsing the base ref. Note this in a header comment in the generated `.mmd`:
+This is a deliberate approximation. Note it in a header comment in the generated `.mmd`:
 
 ```
 %% Edge classification is approximate: edges are marked added/removed when
 %% they touch a file that was added/removed in this PR.
 ```
 
-### 6. Synthesize the Mermaid diagram
+### 8. Synthesize the Mermaid diagram
 
-Use `graph LR`. Group nodes into `subgraph` blocks by top-level directory (e.g., `src`, `lib`, `app`). Node IDs are slugified paths; labels are basenames; tooltips are full paths.
+`graph LR`. Subgraphs use friendly titles (step 5). Node IDs are slugified (a-z, digits, underscore — keep them stable but never user-visible); node labels are the friendly labels.
 
 ```mermaid
 graph LR
-  %% Edge classification is approximate ...
+  classDef added fill:#d1fae5,stroke:#10b981,stroke-width:2px,color:#064e3b;
+  classDef modified fill:#fffbe6,stroke:#f59e0b,stroke-width:2px,color:#78350f;
+  classDef removed fill:#fee2e2,stroke:#ef4444,stroke-width:2px,stroke-dasharray:5 3,color:#7f1d1d;
 
-  classDef added fill:#d1fae5,stroke:#10b981,stroke-width:2px;
-  classDef modified fill:#fffbe6,stroke:#f59e0b,stroke-width:2px;
-  classDef removed fill:#fee2e2,stroke:#ef4444,stroke-width:2px,stroke-dasharray:5 3;
-
-  subgraph src
-    src_auth_login["login.ts"]
-    src_auth_session["session.ts"]
+  subgraph auth["Authentication"]
+    sign_in["Sign in"]
+    session["Session"]
+    token["Auth token"]
   end
 
-  src_auth_login --> src_auth_session
-  src_auth_login -.-> src_auth_token
+  sign_in --> session
+  sign_in -.-> token
 
-  class src_auth_login modified
-  class src_auth_token added
-
-  click src_auth_login "src/auth/login.ts" "src/auth/login.ts"
+  class sign_in modified
+  class token added
 ```
 
-Edge styles:
+Edges:
 
-- Solid `-->` for **unchanged** edges.
-- Dotted `-.->` for **added** edges.
-- Dotted with label `-. removed .->` for **removed** edges.
+- Solid `-->` for **unchanged**.
+- Dotted `-.->` for **added**.
+- Dotted with label `-. removed .->` for **removed**.
 
-### 7. Validate
+Tooltips can still carry the file path (so devs hovering see it), but only as a tooltip — not as the visible label:
 
-Write the `.mmd` to a temp path and validate:
+```
+click sign_in "src/auth/login.ts" "src/auth/login.ts"
+```
+
+### 9. Validate
 
 ```bash
 TMP=$(mktemp /tmp/mermaid-pr-XXXXXX.mmd)
 # write diagram to $TMP
-node ~/.claude/skills/mermaid-pr/../bin/validate-mermaid.mjs "$TMP"
-```
-
-Resolve the `bin/` path via `readlink`-aware path: the actual installed location is `~/.claude/skills/mermaid-pr/`, which is a symlink to the repo's `skill/` dir; `bin/` is a sibling of `skill/`, so the absolute path is:
-
-```bash
 SKILL_DIR=$(readlink -f ~/.claude/skills/mermaid-pr 2>/dev/null || readlink ~/.claude/skills/mermaid-pr)
 VALIDATOR="$(dirname "$SKILL_DIR")/bin/validate-mermaid.mjs"
 node "$VALIDATOR" "$TMP"
 ```
 
-If validation fails: regenerate **once** with the parser error included in your reasoning ("the previous diagram had error X; produce a corrected version"). If the second attempt also fails, fall back to a fenced ```text block listing the changed files plus a one-line note that diagram generation failed.
+Failure → regenerate **once** with the parser error in your reasoning. Second failure → fall back to a fenced ```text block with the file list and a one-line note that diagram generation failed.
 
-### 8. Sticky-post the comment
+### 10. Sticky-post the comment
 
-Marker for sticky behavior: `<!-- mermaid-pr:diagram -->` as the first line of the comment body.
+Marker for sticky behavior: `<!-- mermaid-pr:diagram -->` as the first line.
 
 Find an existing comment:
 
@@ -141,7 +170,9 @@ Comment body shape (write to a file, then post):
 
 ````
 <!-- mermaid-pr:diagram -->
-## Architecture impact
+## What this PR changes
+
+<your 2–4 sentence plain-English summary from step 6>
 
 ```mermaid
 <your diagram>
@@ -152,12 +183,12 @@ Comment body shape (write to a file, then post):
 - 🟢 green = added
 - 🟡 yellow = modified
 - 🔴 red dashed = removed
-- solid arrow = unchanged import
-- dotted arrow = added/removed import
+- solid arrow = unchanged connection
+- dotted arrow = added/removed connection
 
 </details>
 
-_Auto-generated by [`mermaid-pr`](https://github.com/) from the changed files in this PR._
+_Auto-generated by `mermaid-pr` from the changed files in this PR._
 ````
 
 Post or update:
@@ -171,28 +202,26 @@ else
 fi
 ```
 
-Capture the comment URL from the response (`html_url` for `gh api`, last line of stdout for `gh pr comment`).
+### 11. Return exactly one line
 
-### 9. Return exactly one line
-
-On success:
+Success:
 
 ```
 Posted: <comment URL>
 ```
 
-On failure at any step:
+Failure:
 
 ```
 Failed: <one-sentence reason>
 ```
 
-Nothing else. No preamble, no summary, no markdown formatting.
+Nothing else.
 
 ## What not to do
 
-- Do not render the diagram to SVG/PNG — GitHub renders Mermaid in comments natively.
+- **Do not** put filenames, paths, or file extensions in node labels or subgraph titles. The reader is not an engineer.
+- Do not render the diagram to SVG/PNG.
 - Do not commit the `.mmd` file to the PR branch.
 - Do not retry validation more than once.
-- Do not analyze files outside the repo's working tree.
-- Do not exceed 30 nodes — readability is the primary goal.
+- Do not exceed 30 nodes — readability first.

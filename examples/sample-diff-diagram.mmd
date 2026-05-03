@@ -1,35 +1,46 @@
 %% Edge classification is approximate: edges are marked added/removed when
 %% they touch a file that was added/removed in this PR.
 graph LR
-  classDef added fill:#d1fae5,stroke:#10b981,stroke-width:2px;
-  classDef modified fill:#fffbe6,stroke:#f59e0b,stroke-width:2px;
-  classDef removed fill:#fee2e2,stroke:#ef4444,stroke-width:2px,stroke-dasharray:5 3;
+  classDef added fill:#d1fae5,stroke:#10b981,stroke-width:2px,color:#064e3b;
+  classDef modified fill:#fffbe6,stroke:#f59e0b,stroke-width:2px,color:#78350f;
+  classDef removed fill:#fee2e2,stroke:#ef4444,stroke-width:2px,stroke-dasharray:5 3,color:#7f1d1d;
 
-  subgraph src_auth["src/auth"]
-    login["login.ts"]
-    session["session.ts"]
-    token["token.ts"]
-    legacy["legacy.ts"]
+  subgraph api_group["API"]
+    api_entry["API entry point"]
   end
 
-  subgraph src_api["src/api"]
-    handler["handler.ts"]
+  subgraph auth_group["Authentication"]
+    sign_in["Sign in"]
+    session["Session"]
+    token["Auth token"]
+    old_sign_in["Old sign-in (deprecated)"]
   end
 
-  subgraph src_db["src/db"]
-    users["users.ts"]
+  subgraph data_group["Data"]
+    users["User database"]
   end
 
-  handler --> login
-  login --> session
-  login -.-> token
+  subgraph helpers_group["Helpers"]
+    logger["Logger"]
+  end
+
+  api_entry --> sign_in
+  api_entry --> logger
+  sign_in --> session
+  sign_in -.-> token
   session --> users
-  legacy -. removed .-> session
+  token -.-> logger
+  old_sign_in -. removed .-> session
 
-  class login modified
+  class sign_in modified
+  class session modified
   class token added
-  class legacy removed
+  class old_sign_in removed
 
-  click login "src/auth/login.ts" "src/auth/login.ts"
+  click sign_in "src/auth/login.ts" "src/auth/login.ts"
+  click session "src/auth/session.ts" "src/auth/session.ts"
   click token "src/auth/token.ts" "src/auth/token.ts"
-  click legacy "src/auth/legacy.ts" "src/auth/legacy.ts"
+  click old_sign_in "src/auth/legacy.ts" "src/auth/legacy.ts (removed)"
+  click users "src/db/users.ts" "src/db/users.ts"
+  click logger "src/utils/logger.ts" "src/utils/logger.ts"
+  click api_entry "src/api/handler.ts" "src/api/handler.ts"

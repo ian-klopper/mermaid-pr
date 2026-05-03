@@ -1,6 +1,6 @@
 ---
 name: mermaid-pr
-description: Attach a Mermaid diff diagram to a PR you just created. Use immediately after `gh pr create` succeeds (or any time the user asks for an architecture diagram on an existing PR). Dispatches the `mermaid-pr` subagent in a fresh context window; the subagent analyzes the diff, builds a graph showing which files/modules changed and how the import edges shifted, and posts (or updates) a sticky PR comment containing a fenced ```mermaid block that GitHub renders inline.
+description: Attach a plain-English summary + Mermaid diagram to a PR you just created. Use immediately after `gh pr create` succeeds (or any time the user asks for an architecture diagram on an existing PR). Dispatches the `mermaid-pr` subagent in a fresh context window; the subagent reads the changed files, writes a non-technical 2-4 sentence summary, draws a graph with human-readable labels (NOT filenames), and posts a sticky PR comment containing a fenced ```mermaid block that GitHub renders inline.
 allowed-tools: Bash(gh pr view:*), Bash(gh pr create:*)
 ---
 
@@ -46,10 +46,18 @@ PR details:
 - Base branch: {BASE}
 - Head branch: {HEAD}
 
-Follow the workflow in your subagent definition exactly. Cap the diagram at
-~30 nodes. Highlight added/modified/removed files using the classDef styles
-in your instructions. Use solid edges for unchanged imports and dotted edges
-for added/removed imports.
+Follow the workflow in your subagent definition exactly. Specifically:
+
+- Cap the diagram at ~30 nodes.
+- Use **human-readable labels** for every node and subgraph (e.g. "Sign in",
+  "Auth token", "User database"). NEVER use filenames, paths, or file
+  extensions. The reader is non-technical.
+- Open the comment with a 2–4 sentence plain-English summary of what the PR
+  changes at a system level — what's added, what's modified, what's removed.
+  No code names.
+- Highlight added/modified/removed files with the classDef styles in your
+  instructions. Use solid edges for unchanged connections, dotted for
+  added/removed.
 
 If validation fails twice, post a fenced text block listing the changed files
 instead of broken Mermaid.
