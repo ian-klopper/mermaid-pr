@@ -1,0 +1,35 @@
+%% Edge classification is approximate: edges are marked added/removed when
+%% they touch a file that was added/removed in this PR.
+graph LR
+  classDef added fill:#d1fae5,stroke:#10b981,stroke-width:2px;
+  classDef modified fill:#fffbe6,stroke:#f59e0b,stroke-width:2px;
+  classDef removed fill:#fee2e2,stroke:#ef4444,stroke-width:2px,stroke-dasharray:5 3;
+
+  subgraph src_auth["src/auth"]
+    login["login.ts"]
+    session["session.ts"]
+    token["token.ts"]
+    legacy["legacy.ts"]
+  end
+
+  subgraph src_api["src/api"]
+    handler["handler.ts"]
+  end
+
+  subgraph src_db["src/db"]
+    users["users.ts"]
+  end
+
+  handler --> login
+  login --> session
+  login -.-> token
+  session --> users
+  legacy -. removed .-> session
+
+  class login modified
+  class token added
+  class legacy removed
+
+  click login "src/auth/login.ts" "src/auth/login.ts"
+  click token "src/auth/token.ts" "src/auth/token.ts"
+  click legacy "src/auth/legacy.ts" "src/auth/legacy.ts"

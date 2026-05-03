@@ -1,0 +1,17 @@
+{
+  "name": "mermaid-pr",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Claude Code skill + subagent that attaches a diff-aware Mermaid architecture diagram to GitHub PRs.",
+  "type": "module",
+  "bin": {
+    "mermaid-pr-validate": "./bin/validate-mermaid.mjs"
+  },
+  "scripts": {
+    "validate": "node bin/validate-mermaid.mjs",
+    "validate:sample": "node bin/validate-mermaid.mjs examples/sample-diff-diagram.mmd"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
