@@ -2,6 +2,7 @@
 name: mermaid-pr
 description: Diff-aware Mermaid architecture diagram generator for GitHub PRs. Reads a PR's changed files plus their imports/callers, produces a plain-English summary and a Mermaid graph with human-readable labels (NOT filenames), validates the output, and posts (or updates) a sticky PR comment. Use when invoked by the `mermaid-pr` skill or when the user asks for a PR architecture diagram.
 model: opus
+color: purple
 tools: Bash, Read, Grep, Glob
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: mermaid-pr
 description: Attach a plain-English summary + Mermaid diagram to a PR you just created. Use immediately after `gh pr create` succeeds (or any time the user asks for an architecture diagram on an existing PR). Dispatches the `mermaid-pr` subagent in a fresh context window; the subagent reads the changed files, writes a non-technical 2-4 sentence summary, draws a graph with human-readable labels (NOT filenames), and posts a sticky PR comment containing a fenced ```mermaid block that GitHub renders inline.
-allowed-tools: Bash(gh pr view:*), Bash(gh pr create:*)
+allowed-tools: Bash(gh pr view:*), Bash(gh pr create:*), Bash(git -C *:*), Bash(readlink:*), Bash(find:*), Bash(touch:*), Bash(test:*), Bash(dirname:*)
 ---
 
 # mermaid-pr — dispatcher
@@ -13,6 +13,43 @@ This skill is a **dispatcher**. It does not analyze diffs, generate Mermaid, or 
 - Immediately after `gh pr create` succeeds in this session.
 - When the user asks for "an architecture diagram on the PR" or "show me what this PR changes structurally."
 - When the user explicitly invokes `/mermaid-pr`.
+
+## Pre-dispatch: check for updates
+
+Before dispatching the subagent, check whether this skill has a newer version on its origin remote. Run this single block — it sets `UPDATED_TO` and `UPDATE_SUBJECT` shell vars (empty if no update happened) for use in the dispatch step.
+
+```bash
+SKILL_DIR=$(readlink -f ~/.claude/skills/mermaid-pr 2>/dev/null || readlink ~/.claude/skills/mermaid-pr)
+REPO_ROOT=$(dirname "$SKILL_DIR")
+STAMP="$REPO_ROOT/.last-update-check"
+UPDATED_TO=""
+UPDATE_SUBJECT=""
+
+# Rate-limit: skip the network round-trip if we checked in the last 24h.
+if [ -f "$STAMP" ] && find "$STAMP" -mmin -1440 2>/dev/null | grep -q .; then
+  :
+# Skip if the working tree is dirty — never clobber in-progress edits.
+elif [ -n "$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null)" ]; then
+  touch "$STAMP"
+else
+  PRE=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null)
+  # Swallow network errors silently — never block the PR comment on a failed fetch.
+  git -C "$REPO_ROOT" fetch origin --quiet 2>/dev/null
+  AHEAD=$(git -C "$REPO_ROOT" rev-list HEAD..origin/main --count 2>/dev/null || echo 0)
+  if [ "$AHEAD" -gt 0 ]; then
+    git -C "$REPO_ROOT" pull --ff-only --quiet origin main 2>/dev/null
+  fi
+  POST=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null)
+  touch "$STAMP"
+  if [ -n "$PRE" ] && [ -n "$POST" ] && [ "$PRE" != "$POST" ]; then
+    UPDATED_TO="$POST"
+    UPDATE_SUBJECT=$(git -C "$REPO_ROOT" log -1 --format=%s 2>/dev/null)
+    echo "mermaid-pr: self-updated to $UPDATED_TO ($UPDATE_SUBJECT)"
+  fi
+fi
+```
+
+If `UPDATED_TO` is non-empty, append the acknowledgement block (see "Inline prompt template" below) to the subagent prompt so it adds a footer line to the PR comment. Otherwise dispatch the prompt unchanged.
 
 ## How to dispatch
 
@@ -63,6 +100,18 @@ If validation fails twice, post a fenced text block listing the changed files
 instead of broken Mermaid.
 
 Return one line: "Posted: <url>" on success, or "Failed: <reason>".
+```
+
+### Acknowledgement block (append only if `UPDATED_TO` is non-empty)
+
+```
+The skill self-updated to commit {UPDATED_TO} ("{UPDATE_SUBJECT}") just before
+this run. After the diagram and legend, append a single italic footer line
+to your PR comment acknowledging the update, exactly:
+
+  _mermaid-pr auto-updated to {UPDATED_TO}_
+
+One line. No emoji. Do not mention the update anywhere else in the comment.
 ```
 
 ## Critical: do not do the work yourself
