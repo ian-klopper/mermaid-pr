@@ -59,9 +59,14 @@ If `UPDATED_TO` is non-empty, append the acknowledgement block (see "Inline prom
    gh pr view --json number,baseRefName,headRefName,url,headRepository,headRepositoryOwner -q '{number, base: .baseRefName, head: .headRefName, url, owner: .headRepositoryOwner.login, repo: .headRepository.name}'
    ```
 
-2. **Fill the prompt template** at `~/.claude/skills/mermaid-pr/../examples/prompt-template.md` (or use the inline copy below). Substitute `{NUMBER}`, `{OWNER}`, `{REPO}`, `{URL}`, `{BASE}`, `{HEAD}`.
+2. **Determine `force`.** The subagent has an architectural-significance gate that skips trivial PRs (docs-only, test-only, lockfile bumps, single-file tweaks). Set `FORCE` based on how the skill was triggered:
 
-3. **Dispatch via the Agent tool:**
+   - `force=false` — auto-trigger after `gh pr create`. The gate decides whether to render.
+   - `force=true` — user explicitly invoked `/mermaid-pr`, said "draw the diagram on PR #N", or asked for an architecture diagram on an existing PR. The gate is bypassed and a diagram is always rendered.
+
+3. **Fill the prompt template** at `~/.claude/skills/mermaid-pr/../examples/prompt-template.md` (or use the inline copy below). Substitute `{NUMBER}`, `{OWNER}`, `{REPO}`, `{URL}`, `{BASE}`, `{HEAD}`, `{FORCE}`.
+
+4. **Dispatch via the Agent tool:**
 
    ```
    Agent({
@@ -71,7 +76,11 @@ If `UPDATED_TO` is non-empty, append the acknowledgement block (see "Inline prom
    })
    ```
 
-4. **Relay the subagent's one-line result** verbatim to the user. Do not embellish, do not re-explain. The subagent returns either `Posted: <url>` or `Failed: <reason>`.
+5. **Relay the subagent's one-line result** verbatim to the user. Do not embellish, do not re-explain, do not retry. The subagent returns one of:
+
+   - `Posted: <url>` — diagram was rendered and posted.
+   - `Skipped: not an architectural change` — gate fired; nothing was posted. This is the correct outcome on trivial PRs. Do not coerce it into a render.
+   - `Failed: <reason>` — something went wrong; relay the reason as-is.
 
 ## Inline prompt template
 
@@ -82,24 +91,28 @@ PR details:
 - URL: {URL}
 - Base branch: {BASE}
 - Head branch: {HEAD}
+- Force: {FORCE}
 
 Follow the workflow in your subagent definition exactly. Specifically:
 
-- Cap the diagram at ~30 nodes.
-- Use **human-readable labels** for every node and subgraph (e.g. "Sign in",
-  "Auth token", "User database"). NEVER use filenames, paths, or file
-  extensions. The reader is non-technical.
-- Open the comment with a 2–4 sentence plain-English summary of what the PR
-  changes at a system level — what's added, what's modified, what's removed.
-  No code names.
-- Highlight added/modified/removed files with the classDef styles in your
-  instructions. Use solid edges for unchanged connections, dotted for
+- Run the architectural-significance gate (step 4) unless Force is true. On
+  skip, return "Skipped: not an architectural change" without posting.
+- Diagram nodes are **system components** — services, databases, queues,
+  caches, frontends, workers, schedulers, external APIs. Never per-file
+  nodes. No filenames, paths, or extensions anywhere in the diagram.
+- Open the comment with a 2–4 sentence plain-English summary phrased at the
+  component level — what new component or capability is added, what existing
+  component changes, what is removed.
+- Highlight added/modified/removed components with the classDef styles in
+  your instructions. Solid edges for pre-existing connections, dotted for
   added/removed.
+- Cap at ~30 components.
 
-If validation fails twice, post a fenced text block listing the changed files
-instead of broken Mermaid.
+If validation fails twice, post a fenced text block listing the changed
+components instead of broken Mermaid.
 
-Return one line: "Posted: <url>" on success, or "Failed: <reason>".
+Return one line: "Posted: <url>", "Skipped: not an architectural change",
+or "Failed: <reason>".
 ```
 
 ### Acknowledgement block (append only if `UPDATED_TO` is non-empty)
